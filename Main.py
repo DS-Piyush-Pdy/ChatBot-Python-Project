@@ -1,6 +1,8 @@
 # Conversation tree with Po, the Dragon Warrior, represented as nested dictionaries
 import re
 from difflib import get_close_matches
+def color_text(text, color_code):
+    return f"\033[{color_code}m{text}\033[0m"
 
 def normalize(text):
     """Lowercase, remove punctuation, and extra spaces for flexible matching."""
@@ -12,6 +14,8 @@ def extract_keywords(text):
     words = [w for w in normalize(text).split() if len(w) > 2]
     return set(words)
 
+from difflib import get_close_matches
+
 def match_option(user_input, options):
     """
     Match user input to the best option using:
@@ -21,23 +25,26 @@ def match_option(user_input, options):
     - Keyword overlap
     """
     user_input_norm = normalize(user_input)
-    # 1. Exact number match
+
+    # 1. Exact key match
     if user_input in options:
         return user_input
+    if user_input.isdigit():
+        user_key = str(int(user_input))
+        if user_key in options:
+            return user_key
 
-    # 2. Exact text or substring match
+    # 2. Exact or partial text match
     for key, option in options.items():
         opt_norm = normalize(option['text'])
-        if opt_norm == user_input_norm or opt_norm in user_input_norm or user_input_norm in opt_norm:
+        if user_input_norm == opt_norm or user_input_norm in opt_norm or opt_norm in user_input_norm:
             return key
 
-    # 3. Fuzzy match for typos (using difflib)
-    option_norms = {key: normalize(option['text']) for key, option in options.items()}
-    close = get_close_matches(user_input_norm, list(option_norms.values()), n=1, cutoff=0.8)
+    # 3. Fuzzy match
+    norm_to_key = {normalize(opt['text']): key for key, opt in options.items()}
+    close = get_close_matches(user_input_norm, list(norm_to_key.keys()), n=1, cutoff=0.8)
     if close:
-        for key, norm_text in option_norms.items():
-            if norm_text == close[0]:
-                return key
+        return norm_to_key[close[0]]
 
     # 4. Keyword overlap
     user_words = set(user_input_norm.split())
@@ -48,12 +55,12 @@ def match_option(user_input, options):
         if overlap:
             keyword_matches.append((key, len(overlap)))
     if keyword_matches:
-        # Return the option with the most overlap
         keyword_matches.sort(key=lambda x: -x[1])
         return keyword_matches[0][0]
 
-    # No match found
+    # No match
     return None
+
 
 def run_conversation(node, main_menu):
     """
@@ -64,9 +71,30 @@ def run_conversation(node, main_menu):
     while True:
         print("\n" + node["prompt"])
         for key, option in node["options"].items():
-            print(f"{key}. {option['text']}")
+         emoji = "👉"
+         if "dumpling" in option['text'].lower(): emoji = "🥟"
+         elif "return" in option['text'].lower(): emoji = "🔙"
+         elif "motivation" in option['text'].lower(): emoji = "💡"
+         elif "kung fu" in option['text'].lower(): emoji = "🥋"
+         elif "talk" in option['text'].lower(): emoji = "🗣️"
+         print(f"{emoji} {key}. {option['text']}")
 
-        choice_raw = input("Select an option (or type 'exit' to quit): ").strip()
+
+        choice_raw = input("Your choice (or type 'switch', 'restart', or 'exit'): ").strip()
+        choice_norm = normalize(choice_raw)
+
+        if choice_norm == "exit":
+         print("👋 Thank you for chatting! Skadoosh and stay awesome!")
+         return True
+
+        if choice_norm == "restart":
+         print("🔁 Restarting conversation...")
+         return run_conversation(main_menu, main_menu)
+
+        if choice_norm == "switch":
+         print("🔄 Switching characters...")
+         return run_conversation(main_menu, main_menu)
+
         choice_norm = normalize(choice_raw)
         if choice_norm == "exit":
             print("Thank you for chatting! Skadoosh and stay awesome!")
@@ -77,10 +105,27 @@ def run_conversation(node, main_menu):
         if matched_key:
             selected = node["options"][matched_key]
         else:
-            print("Invalid choice. Please try again.")
+            print("\nInvalid choice. Please try again.")
             continue
 
-        print("\n" + selected.get("response", ""))
+        def detect_speaker(response_text):
+            text = response_text.lower()
+            if "dumpling" in text or "skadoosh" in text or "po" in text or "dragon" in text or "2" in text:
+                return "🐼 Po"
+            elif "nation" in text or "youth" in text or "missile" in text or "1" in text or "apj abdul kalam" in text:
+                        return "🇮🇳 Dr. Kalam"
+            elif "web" in text or "spider" in text or "swing" in text or "3" in text:
+                return "🕷️ Spider-Man"
+            else:
+                return "💬 Chatbot"
+
+        speaker = detect_speaker(selected.get("response", ""))
+        color = "33" if "🐼" in speaker else "32" if "🇮🇳" in speaker else "31"
+        print(color_text(f"\n{speaker}: {selected.get('response', '')}", color))
+
+
+
+        
         if "followup" in selected:
             if run_conversation(selected["followup"], main_menu):
                 return True
@@ -91,7 +136,14 @@ def run_conversation(node, main_menu):
             if run_conversation(selected, main_menu):
                 return True
         else:
-            continue
+            print("\n💬 That’s all I have to share on that topic.")
+            next_action = input("Type 'menu' to switch characters, or 'exit' to quit: ").strip().lower()
+            if next_action == "menu":
+                return run_conversation(main_menu, main_menu)
+            elif next_action == "exit":
+                print("👋 Goodbye!")
+                return True
+
 
 
 # Main conversation tree with character selection
